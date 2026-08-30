@@ -1,235 +1,245 @@
-# RecoveraX — AI-Revenue-Recovery
+<div align="center">
 
-> Autonomous AI Revenue Recovery Engine — LangGraph + Groq (`qwen/qwen3.8-27b`) + Deterministic Policy Guardrails + Human-in-the-Loop (HITL) + Celery/Redis + LangSmith Observability.
+# 🛡️ PaySentinel
+### Autonomous AI Revenue Recovery Engine
 
-RecoveraX detects revenue at risk, diagnoses root cause failure patterns using **Groq LLM (`qwen/qwen3.8-27b`)**, calculates deterministic recovery scores, evaluates strict **financial safety guardrails**, routes high-risk or high-value actions to **Human-in-the-Loop (HITL) approval**, executes approved recovery retries, verifies settlement outcomes, and maintains an **immutable audit trail**.
+**LangGraph · Groq Qwen 27B · Deterministic Safety Guardrails · Human-in-the-Loop · LangSmith Observability**
+
+[![Python](https://img.shields.io/badge/Python-3.12+-4f46e5?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-4f46e5?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-16-4f46e5?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Cyclic%20Agent-7c3aed?style=flat-square)](https://langchain-ai.github.io/langgraph)
+[![License](https://img.shields.io/badge/License-MIT-4f46e5?style=flat-square)](LICENSE)
 
 ---
 
-## Safety Contract
+*"The AI recommends. The policy engine authorizes. Humans control the risk."*
 
-> **The AI recommends; the deterministic policy engine authorizes; execution is blocked for HUMAN/BLOCK states until the required authorization is satisfied. A case is shown as RECOVERED only after verified payment success.**
+</div>
 
 ---
 
-## Workflow Of The Application
+## What is PaySentinel?
+
+Every failed payment is revenue walking out the door. Most systems either blindly retry — causing double-charges and bank dishonor fees — or do nothing at all.
+
+**PaySentinel is a production-grade autonomous AI agent that recovers failed payments safely.** It uses a Groq LLM to diagnose *why* a payment failed, a deterministic Python policy engine to authorize *what* to do next, and a LangGraph stateful graph to *execute* the recovery — with human operators in the loop for every high-risk decision.
 
 ```
-AI RECOMMENDS  →  POLICY AUTHORIZES  →  EXECUTOR ACTS  →  VERIFIER CONFIRMS  →  HUMAN CONTROLS RISK
+DIAGNOSE  →  SCORE  →  RECOMMEND  →  POLICY CHECK  →  HUMAN REVIEW  →  EXECUTE  →  VERIFY
 ```
 
-### Key Architectural Principles
-1. **Scoped LLM Authority**:
-   - The LLM is **ONLY** responsible for failure diagnosis, reasoning over structured customer payment history, and generating recovery strategy recommendations (`RETRY`, `REMIND`, `ESCALATE`, `STOP`).
-   - The LLM **NEVER**: Executes payments, authorizes financial transfers, overrides safety policies, or calculates monetary totals.
-2. **Deterministic Policy Engine Has Final Authority**:
-   - All authorization decisions (`AUTO`, `HUMAN`, `BLOCK`, `STOP`) are evaluated in pure Python.
-   - Fail-closed security guarantee: Any policy exception or ambiguous state defaults to `BLOCK` or `STOP`, **NEVER** `AUTO`. Human sign-off cannot override a hard safety stop.
-3. **Transparent Recovery Scoring & EV**:
-   - Scores cases 0–100 deterministically based on diagnosis, customer LTV, past payment history, and recency.
-   - Expected Recovery Value ($EV$) calculated in Python:
-     $$EV = \text{amount\_at\_risk} \times \left(\frac{\text{recovery\_score}}{100}\right) - \text{costs}$$
+> The LLM never touches money. The policy engine has final authority. Execution is blocked until authorization is satisfied.
 
 ---
 
-## LangGraph Workflow Architecture
+## Benchmark Results — 1,000 Synthetic Payment Cases
 
-RecoveraX implements a stateful **cyclic execution graph** in LangGraph ([`backend/app/agents/graph.py`](file:///c:/Users/Asus-2025/Downloads/Razorpay%20AI%20Buildathon/backend/app/agents/graph.py)):
+| Metric | Naive Blind Retry | PaySentinel (Guardrailed) | Lift |
+| :--- | :---: | :---: | :---: |
+| Revenue Recovered | ₹12.5L | **₹34.8L** | **+₹22.3L** |
+| Recovery Rate | 25.0% | **69.6%** | **+44.6pp** |
+| Duplicate Debits | 14 violations | **0 violations** | **100% safe** |
+| High-value cases auto-approved | Uncontrolled | **0 (all reviewed)** | Full HITL control |
+| Operator Review Queue | None | **713 cases routed** | Risk-aware routing |
+
+> Metrics are from synthetic benchmark simulation. Not live production data.
+
+---
+
+## Architecture
+
+### Core Safety Contract
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     SAFETY HIERARCHY                            │
+│                                                                 │
+│   Groq LLM          →   Diagnoses & Recommends ONLY            │
+│   Policy Engine     →   Authorizes or Blocks (deterministic)   │
+│   Human Operator    →   Reviews all high-value / risk cases     │
+│   Executor          →   Acts only after full authorization      │
+│                                                                 │
+│   Fail-closed guarantee: ambiguous state → BLOCK, never AUTO   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### LangGraph Workflow — 12-Node Cyclic Agent
 
 ```mermaid
 graph TD
-    Node1["1. load_context"] --> Node2["2. diagnose (Groq Qwen 3.8 27B)"]
-    Node2 --> Node3["3. calculate_score"]
-    Node3 --> Node4["4. recommend_action"]
-    Node4 --> Node5["5. policy_check (Safety Guardrails)"]
-    
-    Node5 -- AUTO --> Node7["7. schedule"]
-    Node5 -- HUMAN --> Node6["6. human_approval"]
-    Node5 -- BLOCK / STOP --> Node11["11. stop"]
+    A["⚙️ 1. load_context\nIngest failure + customer LTV"] --> B["🧠 2. diagnose\nGroq LLM — root cause analysis"]
+    B --> C["📊 3. calculate_score\nRecovery Score 0–100 + EV"]
+    C --> D["💡 4. recommend_action\nRETRY / REMIND / ESCALATE / STOP"]
+    D --> E["🛡️ 5. policy_check\nDeterministic safety guardrails"]
 
-    Node6 --> END1((END - Awaiting Sign-off))
-    
-    Node7 --> Node8["8. recheck (Fresh Pre-Check)"]
-    Node8 --> Node9["9. execute (Retry Dispatch)"]
-    Node9 --> Node10["10. verify (Bank Settlement)"]
-    
-    Node10 -- Verified Success --> END2((END - Recovered))
-    Node10 -- Gateway Failed --> Node12["12. reevaluate"]
-    
-    Node12 -- Max Retries (2) Reached --> Node11
-    Node12 -- Retry Allowed --> Node2
-    
-    Node11 --> END3((END - Hard Blocked / Stopped))
+    E -->|"✅ AUTO\nscore ≥ 80, amt ≤ ₹50k"| G["📅 7. schedule\nCelery queue with delay"]
+    E -->|"👤 HUMAN\nhigh value or medium risk"| F["🔔 6. human_approval\nMerchant sign-off required"]
+    E -->|"🚫 BLOCK / STOP\nambiguous or fraud signal"| K["⛔ 12. stop\nAudit trail + halt"]
+
+    F --> WAIT(["⏸️ END — Awaiting Approval"])
+
+    G --> H["🔍 8. recheck\nLive gateway pre-check"]
+    H --> I["⚡ 9. execute\nRetry dispatch to network"]
+    I --> J["✔️ 10. verify\nBank settlement confirmation"]
+
+    J -->|"💚 VERIFIED_SUCCESS"| DONE(["✅ END — Recovered"])
+    J -->|"❌ Gateway Failed"| L["🔁 11. reevaluate\nRetry loop controller"]
+
+    L -->|"Max 2 retries reached"| K
+    L -->|"Retry allowed"| B
+
+    K --> BLOCKED(["🔴 END — Blocked / Stopped"])
+
+    style A fill:#1e2044,stroke:#4f46e5,color:#e0e7ff
+    style B fill:#1e2044,stroke:#7c3aed,color:#e0e7ff
+    style C fill:#1e2044,stroke:#4f46e5,color:#e0e7ff
+    style D fill:#1e2044,stroke:#4f46e5,color:#e0e7ff
+    style E fill:#1e2044,stroke:#f59e0b,color:#fef3c7
+    style F fill:#2d1f00,stroke:#f59e0b,color:#fef3c7
+    style G fill:#052e16,stroke:#10b981,color:#d1fae5
+    style H fill:#052e16,stroke:#10b981,color:#d1fae5
+    style I fill:#052e16,stroke:#10b981,color:#d1fae5
+    style J fill:#052e16,stroke:#10b981,color:#d1fae5
+    style K fill:#2d0a0a,stroke:#ef4444,color:#fee2e2
+    style L fill:#1e2044,stroke:#6366f1,color:#e0e7ff
+    style WAIT fill:#2d1f00,stroke:#f59e0b,color:#fef3c7
+    style DONE fill:#052e16,stroke:#10b981,color:#d1fae5
+    style BLOCKED fill:#2d0a0a,stroke:#ef4444,color:#fee2e2
 ```
 
-### Execution Process Table
+### Node Reference Table
 
-| Node # | Node Identifier | Subsystem / Engine | Detailed Action & Responsibilities |
-| :--- | :--- | :--- | :--- |
-| **01** | `load_context` | Data Layer | Ingests transaction failure context, customer LTV, past payment history, and gateway error payloads into `RecoveryState`. |
-| **02** | `diagnose` | Groq LLM Engine | Invokes LLM (`qwen/qwen3.8-27b`) to reason over failure codes and output structured diagnosis (`INSUFFICIENT_FUNDS`, `TEMPORARY_BANK_ERROR`, `CARD_EXPIRED`, etc.). |
-| **03** | `calculate_score` | Recovery Scorer | Deterministically calculates Recovery Score (0–100) and Expected Recovery Value ($EV$) based on customer LTV, recency, and past payment reliability. |
-| **04** | `recommend_action` | Action Recommender | Selects optimal recovery strategy (`RETRY`, `REMIND`, `ESCALATE`, `STOP`) and recommended execution delay. |
-| **05** | `policy_check` | Safety Policy Engine | Evaluates pure Python safety rules. Authorizes decision: `AUTO` (safe to auto-retry), `HUMAN` (requires merchant approval), or `BLOCK` / `STOP`. |
-| **06** | `human_approval` | HITL Queue | Routes high-value or medium-risk cases to merchant approval queue and pauses execution graph until sign-off. |
-| **07** | `schedule` | Celery Worker Queue | Enqueues automated retry countdown task into background worker queue for execution. |
-| **08** | `recheck` | Gateway Pre-Check | Performs mandatory fresh pre-execution API check with bank gateway to verify payment state hasn't cleared externally. |
-| **09** | `execute` | Gateway Simulator | Dispatches automated retry payload attempt to payment network (Card / UPI / Netbanking). |
-| **10** | `verify` | Settlement Engine | Queries bank gateway settlement status to verify debit response (`VERIFIED_SUCCESS` vs `FAILED`). |
-| **11** | `reevaluate` | Loop Controller | Re-evaluates attempt outcome against max retries (max 2 retries). Routes back to `diagnose` for secondary attempt or `stop`. |
-| **12** | `stop` | Audit Logger | Safely halts pipeline execution, records immutable audit trail, and prevents duplicate charges. |
-
----
-
-## LangSmith Observability & Tracing Architecture
-
-RecoveraX embeds **LangSmith** as a centralized observability and tracing layer ([`backend/app/observability/langsmith.py`](file:///c:/Users/Asus-2025/Downloads/Razorpay%20AI%20Buildathon/backend/app/observability/langsmith.py)):
-
-```mermaid
-flowchart TD
-    subgraph Execution ["RecoveraX Core Engine"]
-        FastAPI["FastAPI REST Routes"]
-        LangGraph["Stateful Cyclic LangGraph Workflow"]
-        Groq["Groq LLM (qwen/qwen3.8-27b)"]
-        PolicyEngine["Deterministic Safety Policy"]
-        Simulator["Payment Gateway Simulator"]
-    end
-
-    subgraph Observability ["Observability Layer (Passive Only)"]
-        LangSmith["LangSmith Dashboard & Tracing"]
-        Sanitizer["Data Sanitizer (Redacts Credentials)"]
-        TraceLogger["Run Spans, Latency & Error Metrics"]
-    end
-
-    LangGraph -. Traces & Tags .-> Sanitizer
-    Groq -. LLM Token & Latency .-> Sanitizer
-    Simulator -. Outcome State .-> Sanitizer
-    Sanitizer --> LangSmith
-    LangSmith --> TraceLogger
-```
-
----
-
----
-
-## Simulator Benchmark — 1,000 Synthetic Payment Cases
-
-> **Empirical Evaluation**: RecoveraX evaluates performance through a 1,000-case synthetic payment simulator benchmark comparing naive blind retries against our guardrailed AI engine. *(Note: Metrics reflect simulator benchmark evaluation, not live Razorpay merchant production data).*
-
-### Simulator Benchmark Outcomes (1,000 Synthetic Payment Cases)
-
-| Metric | Baseline Strategy (Blind Retry) | RecoveraX AI Engine (Guardrailed) | Incremental Lift |
-| :--- | :--- | :--- | :--- |
-| **Total Volume Evaluated** | ₹50,00,000 (₹50.0L) | ₹50,00,000 (₹50.0L) | 1,000 Synthetic Cases |
-| **Baseline Recovery** | **₹12,50,000 (₹12.5L)** | — | 25.0% Baseline Rate |
-| **RecoveraX Recovery** | — | **₹34,80,000 (₹34.8L)** | 69.6% Guardrailed Rate |
-| **Incremental Revenue Lift** | — | — | **+₹22,30,000 (+₹22.3L Net Lift)** |
-| **Double Debit Safety Violations** | 14 Duplicate Debits | **0 Duplicate Debits (0%)** | 100% Double Debit Prevention |
-| **Ambiguous State Safety Blocks** | 0 (Blind Retry Dispatched) | **1 Case Hard-Blocked** | Zero Fraud/Double Charge Exposure |
-| **High-Exposure Operator Reviews** | 0 (Uncontrolled) | **713 Cases Routed** | Full HITL Risk Control (>₹50k) |
-
-### Key Quantified Takeaways:
-1. **Quantified Monetary Recovery**: RecoveraX achieved **₹34.8L total recovery** vs **₹12.5L baseline**, delivering **+₹22.3L incremental lift** on the 1,000 synthetic case benchmark cohort.
-2. **Zero Financial Safety Violations**: Prevented 14 potential duplicate customer debits through state-verified pre-execution checks (`recheck` node).
-3. **Automated vs Human Split**: **28.7%** low-risk cases auto-executed safely; **71.3%** high-value/risk cases required explicit human operator authorization.
+| # | Node | Engine | Responsibility |
+| :- | :--- | :---- | :------------- |
+| 01 | `load_context` | Data Layer | Ingests transaction failure, customer LTV, payment history, gateway error codes into `RecoveryState` |
+| 02 | `diagnose` | Groq LLM | Reasons over failure codes → structured output: `INSUFFICIENT_FUNDS`, `CARD_EXPIRED`, `TEMP_BANK_ERROR`, `FRAUD_SIGNAL` etc. |
+| 03 | `calculate_score` | Recovery Scorer | Deterministic Recovery Score (0–100) + Expected Value: `EV = amount × (score/100) − costs` |
+| 04 | `recommend_action` | Recommender | Selects strategy (`RETRY` / `REMIND` / `ESCALATE` / `STOP`) + optimal execution delay |
+| 05 | `policy_check` | Safety Engine | Pure Python guardrails → `AUTO` / `HUMAN` / `BLOCK` / `STOP` decision |
+| 06 | `human_approval` | HITL Queue | Routes high-value/risk cases to operator dashboard, pauses graph until sign-off |
+| 07 | `schedule` | Celery Worker | Enqueues retry with countdown delay into background task queue |
+| 08 | `recheck` | Gateway Pre-Check | **Mandatory** live check before execution — kills retry if payment already cleared |
+| 09 | `execute` | Gateway Simulator | Dispatches retry payload to Card / UPI / Netbanking network |
+| 10 | `verify` | Settlement Engine | Queries bank for `VERIFIED_SUCCESS` vs `FAILED` debit confirmation |
+| 11 | `reevaluate` | Loop Controller | Checks retry count (max 2) → back to `diagnose` or forward to `stop` |
+| 12 | `stop` | Audit Logger | Halts pipeline, writes immutable audit record, prevents duplicate charges |
 
 ---
 
 ## Deterministic Safety Rules
 
-1. **Rule 1 (`MAX_AUTO_RETRY_AMOUNT = ₹50,000`)**: Transactions exceeding threshold require **HUMAN** approval.
-2. **Rule 2 (`MIN_AUTO_RECOVERY_SCORE = 80`)**: Recovery scores < 80 require **HUMAN** approval or **BLOCK**.
-3. **Rule 3 (`AMBIGUOUS_PAYMENT = BLOCK`)**: Ambiguous payment states are **ALWAYS** blocked from auto-retry.
-4. **Rule 4 (`POSSIBLE_CUSTOMER_DEBIT = BLOCK`)**: If customer might already be debited, retry is **BLOCKED**.
-5. **Rule 5 (`FRAUD_SIGNAL = BLOCK`)**: Fraud signals cause an immediate **BLOCK**.
-6. **Rule 6 (`MAX_RETRIES = 2`)**: Maximum 2 retries allowed per case.
-7. **Rule 7 (`PERMANENT_FAILURE = STOP`)**: Closed accounts or invalid details cause hard **STOP**.
-8. **Rule 11 (`MANDATE_COOLOFF_PROTECTION`)**: Auto-debit mandate retries (`NACH`, `E_MANDATE`, `UPI_AUTOPAY`) enforce a **48-hour minimum cool-off guardrail** to prevent bank dishonor/bounce fee penalties (₹250–₹500/bounce).
+No LLM involvement. Pure Python. Fail-closed.
+
+| Rule | Threshold | Action |
+| :--- | :-------- | :----- |
+| Amount limit | `amount > ₹50,000` | → **HUMAN** review required |
+| Score floor | `recovery_score < 80` | → **HUMAN** or **BLOCK** |
+| Ambiguous state | Payment state unclear | → **BLOCK** always |
+| Possible debit | Customer may already be charged | → **BLOCK** always |
+| Fraud signal | Any fraud indicator present | → **BLOCK** always |
+| Max retries | `retry_count >= 2` | → **STOP** |
+| Permanent failure | Closed account / invalid card | → **STOP** hard halt |
+| Mandate cooloff | NACH / e-Mandate / UPI Autopay | → **48hr minimum** between retries |
 
 ---
 
-## Mandate & E-Mandate Retry Sequencer
+## Observability — LangSmith Tracing
 
-RecoveraX includes a specialized **Mandate Presentation Window Sequencer** ([`backend/app/policy/mandate_sequencer.py`](file:///c:/Users/Asus-2025/Downloads/Razorpay%20AI%20Buildathon/backend/app/policy/mandate_sequencer.py)) tailored for Indian recurring auto-debit networks (`NACH`, `E_MANDATE`, `UPI_AUTOPAY`):
+```mermaid
+flowchart LR
+    subgraph Engine ["⚙️ PaySentinel Core"]
+        API["FastAPI Routes"]
+        LG["LangGraph Agent"]
+        LLM["Groq LLM"]
+        PE["Policy Engine"]
+        GW["Gateway Simulator"]
+    end
 
-1. **NPCI Clearing Batch Cycle Alignment**:
-   - Automatically aligns retry schedules with NPCI clearing windows: **Morning Batch (09:00 AM IST)** and **Evening Batch (17:00 PM IST)**.
-2. **Salary & Liquidity Window Matching**:
-   - For `INSUFFICIENT_FUNDS` failures, maps retry presentation to customer salary credit days (1st, 5th, 7th, 10th, 25th of the month) when bank balances reload.
-3. **100% Dishonor Fee Protection Guardrail**:
-   - Enforces a minimum 48-hour cool-off before 2nd mandate re-presentation, eliminating bank bounce fee charges for merchants and customers.
+    subgraph Observability ["🔭 Passive Observability Layer"]
+        SAN["Data Sanitizer\nRedacts credentials"]
+        LS["LangSmith\nDashboard & Traces"]
+        TL["Spans · Latency · Errors"]
+    end
 
----
+    LG -. trace .-> SAN
+    LLM -. tokens + latency .-> SAN
+    GW -. outcome state .-> SAN
+    SAN --> LS --> TL
 
-## Hinglish Voice Recovery & Promise-to-Pay Tracker
-
-### 1. Hinglish Voice Recovery / AI-Generated Voice Intervention (Sarvam AI Integration)
-- **Sarvam AI Text-to-Speech Engine**: Sarvam AI generates personalized Hinglish voice recovery messages (`bulbul:v3`, speaker: `priya`, `target_language_code="hi-IN"`).
-- **Environment & MOCK/REAL Mode**: Reads `SARVAM_API_KEY` from `.env`. When configured, executes live audio synthesis (`mode: "REAL"`). When omitted, runs in **MOCK/DEMO mode** (`mode: "MOCK"`) with Web Speech browser audio playback fallback.
-- **Payload Status & Audit Trail**: Logs `VOICE_SCRIPT_GENERATED` (Groq/template script) and `VOICE_AUDIO_GENERATED` (base64 WAV payload synthesized and ready for PSTN/IVR telephony dispatch layers like Exotel/Twilio/Vapi).
-- **Safety Policy Enforcement**: Voice intervention synthesis is governed by the deterministic safety policy engine. Prohibited on `BLOCKED` or `AMBIGUOUS` cases to prevent misleading or unsafe communications.
-- **API Endpoint**: `POST /api/v1/cases/{case_id}/voice-call`
-
-### 2. Promise-to-Pay (P2P) Tracker
-- **P2P Lifecycle**: Full commitment tracking state machine: `PROMISED` ➔ `P2P_KEPT` or `P2P_BROKEN`.
-- **Authoritative Settlement Verification**: P2P commitments are verified against the system's authoritative verified settlement state. A promise is marked as `P2P_KEPT` only upon confirmed deposit. Unverified retries do not count.
-- **API Endpoints (Full Commitment Management)**:
-  - `POST /api/v1/cases/{case_id}/p2p`: Record customer commitment date, amount & notes.
-  - `GET /api/v1/cases/{case_id}/p2p`: Retrieve case P2P commitment history.
-  - `PUT /api/v1/cases/{case_id}/p2p/{promise_id}`: Edit / update commitment date, amount & notes.
-  - `DELETE /api/v1/cases/{case_id}/p2p`: Remove / cancel active commitment.
-  - `POST /api/v1/cases/{case_id}/p2p/verify`: Reconcile P2P state against system settlement state.
-
----
-
-## Quick Start Guide
-
-### 1. Prerequisites
-- **Node.js**: `v18.17+`
-- **Python**: `3.12+`
-
-### 2. Backend Setup (FastAPI + LangGraph)
-
-#### Option A: Fast Setup with `uv` (Recommended)
-```bash
-cd backend
-
-# 1. Create virtual environment
-uv venv
-
-# 2. Activate virtual environment
-.venv\Scripts\activate      # Windows (PowerShell)
-# source .venv/bin/activate # Linux/macOS
-
-# 3. Install dependencies & copy env
-uv pip install -r requirements.txt
-cp .env.example .env
-
-# 4. Run FastAPI Server
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+    style Engine fill:#0d1117,stroke:#4f46e5,color:#e0e7ff
+    style Observability fill:#0d1117,stroke:#7c3aed,color:#e0e7ff
 ```
 
-#### Option B: Standard `pip` Setup
+Every LLM call, policy decision, and gateway outcome is traced. The observability layer is **passive only** — it can never influence execution.
+
+---
+
+## Mandate & UPI Autopay Retry Sequencer
+
+For Indian auto-debit rails (`NACH`, `E_MANDATE`, `UPI_AUTOPAY`), PaySentinel includes a specialized retry scheduler:
+
+- **NPCI Batch Alignment** — schedules retries at Morning Batch (09:00 IST) or Evening Batch (17:00 IST) clearing windows
+- **Salary Day Targeting** — for `INSUFFICIENT_FUNDS`, targets 1st, 5th, 7th, 10th, 25th of month when accounts reload
+- **Dishonor Fee Protection** — enforces 48-hour cooloff between presentations, eliminating ₹250–₹500/bounce bank penalties
+
+---
+
+## Hinglish Voice Recovery + Promise-to-Pay
+
+### Voice Recovery (Sarvam AI)
+Generates personalized Hinglish payment reminder audio using Sarvam `bulbul:v3` (speaker: `priya`, `hi-IN`).
+- With `SARVAM_API_KEY`: live audio synthesis → base64 WAV for PSTN/IVR dispatch (Exotel/Twilio/Vapi)
+- Without key: MOCK mode with browser Web Speech fallback
+- Safety-gated: voice is prohibited on `BLOCKED` / `AMBIGUOUS` cases
+
+**Endpoint:** `POST /api/v1/cases/{case_id}/voice-call`
+
+### Promise-to-Pay Tracker
+Full P2P lifecycle state machine: `PROMISED` → `P2P_KEPT` or `P2P_BROKEN`
+
+| Method | Endpoint | Description |
+| :----- | :------- | :---------- |
+| POST | `/api/v1/cases/{id}/p2p` | Record commitment |
+| GET | `/api/v1/cases/{id}/p2p` | Retrieve history |
+| PUT | `/api/v1/cases/{id}/p2p/{promise_id}` | Update date/amount |
+| DELETE | `/api/v1/cases/{id}/p2p` | Cancel commitment |
+| POST | `/api/v1/cases/{id}/p2p/verify` | Reconcile against settlement |
+
+---
+
+## Quick Start
+
+### Prerequisites
+- Python `3.12+`
+- Node.js `v18.17+`
+
+### Backend
+
 ```bash
 cd backend
 
-# 1. Create & activate virtual environment
+# Create & activate virtualenv (Python 3.12)
 python -m venv .venv
-.venv\Scripts\activate      # Windows (PowerShell)
-# source .venv/bin/activate # Linux/macOS
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # macOS/Linux
 
-# 2. Install dependencies & copy env
+# Install dependencies
 pip install -r requirements.txt
-cp .env.example .env
 
-# 3. Run FastAPI Server
+# Configure environment
+cp .env.example .env
+# → Add your GROQ_API_KEY in .env
+# → Set DEMO_MODE=true for local dev (bypasses auth)
+
+# Start the server
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-- **Backend API**: `http://127.0.0.1:8000`
-- **Interactive Swagger Docs**: `http://127.0.0.1:8000/docs`
+Backend live at → `http://127.0.0.1:8000`  
+Swagger docs → `http://127.0.0.1:8000/docs`
 
-### 3. Frontend Setup (Next.js App Router)
+### Frontend
 
 ```bash
 cd frontend
@@ -237,4 +247,54 @@ npm install
 npm run dev
 ```
 
-- **Frontend App**: `http://localhost:3000`
+Dashboard live at → `http://localhost:3000`
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+| :---- | :--------- |
+| Agent Orchestration | LangGraph (stateful cyclic graph) |
+| LLM | Groq — Qwen 3.8B / 27B |
+| Backend API | FastAPI + SQLAlchemy + Alembic |
+| Task Queue | Celery + Redis |
+| Frontend | Next.js 16 (Turbopack) + Tailwind CSS |
+| Database | SQLite (dev) / PostgreSQL (prod) |
+| Observability | LangSmith — traces, spans, latency |
+| Voice | Sarvam AI (bulbul:v3, hi-IN) |
+| Deployment | Render (backend) + Vercel (frontend) |
+
+---
+
+## Project Structure
+
+```
+PaySentinel/
+├── backend/
+│   ├── app/
+│   │   ├── agents/          # LangGraph graph + 12 nodes + prompts
+│   │   ├── api/routes/      # FastAPI endpoints
+│   │   ├── policy/          # Deterministic safety engine + mandate sequencer
+│   │   ├── recovery/        # Scoring, EV calculation, prioritization
+│   │   ├── services/        # Business logic layer
+│   │   ├── models/          # SQLAlchemy ORM models
+│   │   ├── workers/         # Celery tasks
+│   │   └── observability/   # LangSmith integration
+│   └── tests/               # Policy, scoring, LangGraph, voice, P2P tests
+└── frontend/
+    └── src/
+        ├── app/             # Next.js pages: dashboard, cases, approvals, audit
+        ├── components/      # UI: simulator, charts, badges, timeline
+        └── lib/             # API client, types, store
+```
+
+---
+
+<div align="center">
+
+Built by **Dev Vikram Singh**
+
+*PaySentinel — AI diagnoses. Policy authorizes. Humans control the risk.*
+
+</div>
