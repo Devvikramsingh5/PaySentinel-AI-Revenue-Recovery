@@ -291,6 +291,72 @@ PaySentinel/
 
 ---
 
+---
+
+## Screenshots
+
+### 🖥️ Dashboard — Portfolio Health & Recovery Metrics
+
+> Open `http://localhost:3000/dashboard` after running the project
+
+![Dashboard](docs/images/screenshots/dashboard.png)
+
+---
+
+### ⚡ Recovery Agent Simulator
+
+> Run any of the 12 pre-built failure scenarios through the full LangGraph pipeline live
+
+![Simulator](docs/images/screenshots/simulator.png)
+
+---
+
+### 👤 Human Approval Queue
+
+> High-value cases (> ₹50,000) are routed here for merchant sign-off before execution
+
+![Approval Queue](docs/images/screenshots/approvals.png)
+
+---
+
+### 📋 Payment Cases — Full Incident Feed
+
+> All 1,001 synthetic recovery cases with risk tier, policy decision, and status
+
+![Cases](docs/images/screenshots/cases.png)
+
+---
+
+### 🔭 LangSmith Observability — Live Trace Runs
+
+Every LangGraph execution is fully traced — LLM tokens, latency, node transitions, and policy decisions.
+
+<div align="center">
+
+![LangSmith Runs](docs/images/langsmith_runs_list.png)
+
+*LangSmith run list — all agent executions with latency and outcome*
+
+</div>
+
+---
+
+### 🔍 LangSmith — Detailed Trace View
+
+<div align="center">
+
+![LangSmith Trace](docs/images/langsmith_trace_detail.png)
+
+*Individual trace — node-by-node breakdown of a full recovery pipeline run*
+
+</div>
+
+---
+
+> **To add dashboard screenshots:** take a screenshot of `localhost:3000`, save it to `docs/images/screenshots/` with the matching filename, then push.
+
+---
+
 <div align="center">
 
 Built by **Dev Vikram Singh**
