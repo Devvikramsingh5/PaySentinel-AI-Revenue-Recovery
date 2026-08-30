@@ -1,0 +1,196 @@
+# RecoveraX Engine — Backend 
+
+**RecoveraX**
+
+An autonomous revenue recovery backend engine with deterministic financial safety guardrails and Human-in-the-Loop (HITL) approval routing.
+
+---
+
+## Core Product Philosophy
+
+```
+AI RECOMMENDS  →  POLICY AUTHORIZES  →  EXECUTOR ACTS  →  VERIFIER CONFIRMS  →  HUMAN CONTROLS RISK
+```
+
+> **Safety contract**: The AI recommends; the deterministic policy engine authorizes; execution is blocked for HUMAN/BLOCK states until the required authorization is satisfied. A case is shown as RECOVERED only after verified payment success.
+
+- **Groq LLM (`qwen/qwen3.8-27b`)**: Diagnoses root causes, recommends actions (`RETRY`, `REMIND`, `ESCALATE`, `STOP`), and explains reasoning over structured context.
+- **Deterministic Policy Engine**: Has **final authority**. Enforces thresholds (`MAX_AUTO_RETRY_AMOUNT=50000`, `MIN_AUTO_RECOVERY_SCORE=80`, `MAX_RETRIES=2`), blocks ambiguous/double-debit states, and fails closed (`BLOCK`).
+- **Human-in-the-Loop (HITL)**: Escalates medium-risk and high-value transactions for human sign-off (`Approve`, `Reject`, `Modify`). Human modifications re-evaluate policy safety rules before execution.
+
+---
+
+## Stateful Cyclic LangGraph Workflow Architecture
+
+```mermaid
+graph TD
+    A[Revenue Event] --> B[Load Context]
+    B --> C[Diagnose Groq]
+    C --> D[Calculate Score Python]
+    D --> E[Recommend Action Groq]
+    E --> F[Policy Check Python]
+    
+    F -->|AUTO| G[Schedule Retry]
+    F -->|HUMAN| H[Human Approval Queue]
+    F -->|BLOCK/STOP| I[Stop Case & Audit]
+    
+    H -->|Approve| G
+    H -->|Reject| I
+    H -->|Modify| F
+    
+    G --> J[Re-check Payment State]
+    J --> K[Action Executor]
+    K --> L[Payment Simulator]
+    L --> M[Outcome Verifier]
+    
+    M -->|RECOVERED| N[End - Revenue Deposited]
+    M -->|FAILED| O[Re-evaluate & Audit Log]
+    O -->|Retry < Max| G
+    O -->|Retry >= Max| I
+```
+
+---
+
+## Tech Stack
+
+- **Framework**: FastAPI (Async Python 3.12+)
+- **LLM**: Groq API (`ChatGroq`, `qwen/qwen3.8-27b`) via `langchain-groq`
+- **Orchestration**: Stateful cyclic LangGraph workflow
+- **Database**: PostgreSQL (SQLAlchemy 2.x, psycopg, Alembic) with SQLite fallback
+- **Task Queue**: Celery + Redis
+- **Testing**: pytest
+
+---
+
+## Quick Start
+
+### 1. Local Setup
+
+#### Option A: Fast Setup with `uv` (Recommended)
+```bash
+cd backend
+
+# 1. Create virtual environment
+uv venv
+
+# 2. Activate virtual environment
+# On Windows (PowerShell):
+.venv\Scripts\activate
+# On Linux/macOS:
+source .venv/bin/activate
+
+# 3. Install dependencies from requirements.txt
+uv add -r requirements.txt
+
+# 4. Copy environment file
+cp .env.example .env
+
+# 5. Start FastAPI app (automatically seeds 1,000 synthetic cases + demo cases)
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### Option B: Standard `pip` Setup
+```bash
+cd backend
+python -m venv venv
+# On Windows:
+venv\Scripts\activate
+# On Linux/macOS:
+source venv/bin/activate
+
+pip install -r requirements.txt
+cp .env.example .env
+
+# Run FastAPI app
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 2. Run Test Suite
+```bash
+# With uv environment:
+.venv\Scripts\python -m pytest --ignore=test_llm.py
+
+# With standard venv:
+pytest --ignore=test_llm.py
+```
+
+### 3. Run via Docker Compose
+```bash
+docker-compose up --build
+```
+
+---
+
+## Capabilities: Mandate Sequencer, Hinglish Voice Intervention & P2P Tracker
+
+### 1. Mandate Retry Sequencer (NPCI & Salary Window Matching)
+- **NPCI Batch Schedule Alignment**: Automatically aligns NACH auto-debit retries with NPCI clearing windows (**Morning Batch 09:00 AM IST** & **Evening Batch 17:00 PM IST**).
+- **Salary & Liquidity Day Matching**: Synchronizes retries for `INSUFFICIENT_FUNDS` failures with customer salary credit days (1st, 5th, 7th, 10th, 25th of the month).
+- **48-Hour Dishonor Protection Guardrail**: Enforces mandatory 48-hour cool-off between re-presentations, eliminating bank bounce fees.
+
+### 2. Hinglish Voice Recovery / AI-Generated Voice Intervention (Sarvam AI Integration)
+- **Sarvam AI Text-to-Speech Engine**: Sarvam AI generates personalized Hinglish voice recovery messages (`bulbul:v3`, speaker: `priya`, `hi-IN`).
+- **Mode Auto-Detection**: Live synthesis (`mode: "REAL"`) when `SARVAM_API_KEY` is present in `.env`, fallback `mode: "MOCK"` with browser audio player preview.
+- **Audit Trail (`VOICE_SCRIPT_GENERATED` & `VOICE_AUDIO_GENERATED`)**: Logs script creation and audio payload synthesis (`status: "SYNTHESIZED"`), preparing base64 WAV payload for PSTN telephony dispatch layers (Exotel, Twilio, Vapi, Retell AI).
+- **API Endpoint**: `POST /cases/{id}/voice-call`
+
+### 3. Promise-to-Pay (P2P) Tracker
+- **State Machine**: `PROMISED` ➔ `P2P_KEPT` or `P2P_BROKEN`. Verified strictly against the system's authoritative verified settlement state.
+- **API Endpoints**:
+  - `POST /cases/{id}/p2p`: Record customer commitment date & amount.
+  - `GET /cases/{id}/p2p`: Retrieve case P2P commitment history.
+  - `PUT /cases/{id}/p2p/{promise_id}`: Edit / update commitment details.
+  - `DELETE /cases/{id}/p2p`: Remove / cancel active commitment.
+  - `POST /cases/{id}/p2p/verify`: Reconcile P2P state against system settlement state.
+
+---
+
+## 📡 Key REST API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/health` | System health check & configuration |
+| `GET` | `/dashboard/metrics` | Dynamic dashboard KPI metrics |
+| `GET` | `/cases` | Filterable list of recovery cases |
+| `GET` | `/cases/{id}` | Detailed recovery case information |
+| `POST` | `/cases/{id}/analyze` | Run LangGraph diagnosis & policy pipeline |
+| `GET` | `/approvals` | Queue of cases requiring human sign-off |
+| `POST` | `/cases/{id}/approve` | Human operator approves action |
+| `POST` | `/cases/{id}/reject` | Human operator rejects action |
+| `POST` | `/cases/{id}/modify` | Human operator modifies action/delay |
+| `POST` | `/cases/{id}/recheck` | Re-checks gateway payment state |
+| `POST` | `/cases/{id}/execute` | Executes retry via simulator & verifies deposit |
+| `POST` | `/cases/{id}/voice-call` | Synthesizes Sarvam AI Hinglish voice intervention payload |
+| `POST` | `/cases/{id}/p2p` | Record Promise-to-Pay commitment |
+| `GET` | `/cases/{id}/p2p` | Retrieve case Promise-to-Pay records |
+| `PUT` | `/cases/{id}/p2p/{promise_id}` | Update Promise-to-Pay commitment |
+| `DELETE` | `/cases/{id}/p2p` | Delete Promise-to-Pay commitment |
+| `POST` | `/cases/{id}/p2p/verify` | Reconcile P2P state against system settlement state |
+| `POST` | `/cases/{id}/stop` | Manually stops recovery case |
+| `GET` | `/cases/{id}/audit` | Immutable audit log trail |
+| `POST` | `/experiments/run` | Run batch A/B experiment (Baseline vs AI Agent) |
+
+---
+
+## Simulator Benchmark — 1,000 Synthetic Payment Cases
+
+> *(Note: Metrics reflect a 1,000-case synthetic payment simulator benchmark evaluation, not live Razorpay merchant production data).*
+
+| Metric | Baseline Strategy (Blind Retry) | RecoveraX AI Engine (Guardrailed) | Incremental Lift |
+| :--- | :--- | :--- | :--- |
+| **Total Volume Evaluated** | ₹50,00,000.00 | ₹50,00,000.00 | 1,000 Synthetic Cases |
+| **Baseline Recovery** | **₹12,50,000.00 (₹12.5L)** | — | 25.0% Baseline Rate |
+| **RecoveraX Recovery** | — | **₹34,80,000.00 (₹34.8L)** | 69.6% Guardrailed Rate |
+| **Incremental Revenue Lift** | — | — | **+₹22,30,000.00 (+₹22.3L Lift)** |
+| **Double Debit Safety Violations** | 14 Duplicate Debits | **0 Duplicate Debits (0%)** | 100% Double Debit Prevention |
+| **Ambiguous State Safety Blocks** | 0 (Blind Retry Dispatched) | **1 Case Hard-Blocked** | Zero Fraud/Double Charge Exposure |
+
+---
+
+## Seeded Demo Cases
+
+- `CASE-1021`: ₹2,000 FAILED_PAYMENT (`TEMPORARY_BANK_ERROR`) → Score 87, Policy `AUTO` → Retry `SUCCESS` (₹2,000 Recovered)
+- `CASE-1032`: ₹8,500 CHECKOUT_ABANDONMENT (`SESSION_TIMEOUT`) → Score 75, Policy `HUMAN` → Payment Link Sent (₹8,500 Recovered)
+- `CASE-1048`: ₹25,000 FAILED_PAYMENT (`AMBIGUOUS_STATE`) → Score 10, Policy `BLOCK` → Hard-blocked
+- `CASE-1088`: ₹2,000 SUBSCRIPTION_FAILURE (`CARD_EXPIRED`) → Score 65, Policy `HUMAN` → Scheduled for Retry #2
+- `CASE-1102`: ₹75,000 OVERDUE_INVOICE (`INVOICE_OVERDUE_18_DAYS`) → Score 55, Policy `HUMAN` → Payment Link Approved (₹75,000 Recovered)
