@@ -1,7 +1,7 @@
 # ==============================================================================
-# RecoveraX â€” Autonomous AI Revenue Recovery Engine
-# Author & Copyright (c) 2026 Monishwaran45 (https://github.com/Monishwaran45)
-# Repository: https://github.com/Monishwaran45/RecoveraX-AI-Revenue-Recovery
+# PaySentinel — Autonomous AI Revenue Recovery Engine
+# Author & Copyright (c) 2026 Dev Vikram Singh (https://github.com/Devvikramsingh5)
+# Repository: https://github.com/Devvikramsingh5/PaySentinel-AI-Revenue-Recovery
 # All Rights Reserved.
 # ==============================================================================
 
